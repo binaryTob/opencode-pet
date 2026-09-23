@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+app=${OPENCODE_PET_APP_DIR:-/usr/share/opencode-pet}/pet.py
+if [ "${1:-}" = "--install" ]; then
+    exec /usr/bin/python3 "$app" "$@"
+fi
+
+# Upgrade the per-user plugin after a package update. OpenCode loads it on restart.
+/usr/bin/python3 "$app" --install >/dev/null
+exec /usr/bin/python3 "$app" "$@"

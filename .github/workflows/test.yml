@@ -12,9 +12,29 @@ jobs:
       - name: Install GTK bindings
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-gdkpixbuf-2.0 librsvg2-common
+          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-gdkpixbuf-2.0 librsvg2-common desktop-file-utils
       - name: Python tests
         run: /usr/bin/python3 -m unittest -v test_pet.py
       - uses: oven-sh/setup-bun@v2
       - name: Plugin tests
         run: bun test plugin.test.ts
+      - name: Build Debian package
+        run: packaging/build-deb.sh
+      - name: Inspect Debian package
+        run: |
+          dpkg-deb --info dist/opencode-pet_*_all.deb
+          dpkg-deb --contents dist/opencode-pet_*_all.deb
+          desktop-file-validate packaging/opencode-pet.desktop
+      - name: Smoke test extracted launcher
+        run: |
+          temp_dir=$(mktemp -d)
+          trap 'rm -rf "$temp_dir"' EXIT
+          dpkg-deb -x dist/opencode-pet_*_all.deb "$temp_dir"
+          XDG_CONFIG_HOME="$temp_dir/config" OPENCODE_PET_APP_DIR="$temp_dir/usr/share/opencode-pet" \
+            "$temp_dir/usr/bin/opencode-pet" --help
+          test -f "$temp_dir/config/opencode/plugins/pet.js"
+          cmp "$temp_dir/usr/share/opencode-pet/plugin/pet.js" "$temp_dir/config/opencode/plugins/pet.js"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-pet-deb
+          path: dist/opencode-pet_*_all.deb

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=OpenCode Pet
+Comment=Floating animated companion for OpenCode
+Exec=opencode-pet
+Icon=opencode-pet
+Terminal=false
+Categories=Development;
+StartupNotify=false

@@ -23,7 +23,7 @@ Configura tu proveedor en OpenCode con `/connect` y selecciona un modelo con `/m
 
 ## Importar tu mascota de ChatGPT
 
-Descarga tu spritesheet transparente PNG/WebP de ChatGPT/Codex. Formatos: **1536×1872** (8×9) o **1536×2288** (8×11), o una escala limpia de esas dimensiones. También se acepta una carpeta con `pet.json` y `spritesheet.png`/`.webp`.
+Descarga tu imagen transparente PNG/WebP de ChatGPT/Codex. Se admiten atlas Codex de **1536×1872** (8×9) o **1536×2288** (8×11), incluso a otra escala; **tiras horizontales de ocho fotogramas** con espacios transparentes (aunque el ancho no sea divisible por ocho); y **una sola imagen estática**. En tiras e imágenes sueltas, la mascota adapta los dibujos localmente al formato del renderizador y reutiliza los fotogramas en cada estado. También se acepta una carpeta con `pet.json` y `spritesheet.png`/`.webp`.
 
 - En la ventana: **Mascota → Importar PNG/WebP…**, elige el archivo y cambia de mascota al instante.
 - En la terminal: `python3 pet.py --import-pet "/ruta/a/mi-spritesheet.png"`; reinicia la ventana para verla.
@@ -37,7 +37,7 @@ El botón **✎ Chats** abre las sesiones recientes de los proyectos donde esté
 
 - **No aparecen proyectos / error de conexión:** ejecuta `python3 pet.py --install`, cierra **todas** las instancias de OpenCode y vuelve a abrir una. El plugin debe cargarse después de instalarse. Puedes comprobar la mascota con `curl http://127.0.0.1:47829/health`.
 - **No aparecen modelos:** conecta primero un proveedor en OpenCode con `/connect` y vuelve a abrir el panel.
-- **Formato de imagen inválido:** verifica transparencia, cuadrícula 8×9 u 8×11 y límite de 20 MiB.
+- **La imagen no se anima:** usa PNG/WebP de hasta 20 MiB con ocho fotogramas separados por espacios transparentes. Si no detecta los espacios, la muestra como mascota estática.
 - **Puerto 47829 ocupado:** ya hay otra ventana de la mascota en marcha; cierra esa instancia antes de iniciar una nueva.
 
 `python3 pet.py --install` es idempotente. Si actualiza un plugin previo de este proyecto, conserva una copia `pet.js.backup`. Para desinstalar, cierra la mascota, quita `~/.config/opencode/plugins/pet.js` y reinicia OpenCode; tus mascotas personales permanecen en el directorio de datos hasta que decidas eliminarlas.

@@ -200,6 +200,42 @@ class PetStateTest(unittest.TestCase):
             self.assertEqual(import_pet(source, library, settings)[0], "gatito-2")
             self.assertEqual(pet_slug("Niño 🐱"), "nino")
 
+    def test_import_eight_frame_strip_and_single_image(self):
+        import gi
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            library, settings = root / "pets", root / "settings.json"
+            strip = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 2206, 713)
+            strip.fill(0)
+            for frame in range(8):
+                left = round(frame * 2206 / 8)
+                strip.new_subpixbuf(left + 20, 220, 200, 260).fill(0x3399ffff)
+            strip_path = root / "my-animated-pet.png"
+            strip.savev(str(strip_path), "png", [], [])
+            atlas, width, height, layout, rows = load_pet_path(strip_path, details=True)
+            self.assertEqual((atlas.get_width(), atlas.get_height(), width, height, layout, rows),
+                             (1536, 1872, 192, 208, "strip", 9))
+            slug, folder = import_pet(strip_path, library, settings)
+            self.assertEqual(json.loads((folder / "pet.json").read_text())["layout"], "strip")
+            self.assertEqual(load_pet_path(folder, details=True)[3], "strip")
+            self.assertEqual(slug, "my-animated-pet")
+
+            still = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 1205, 1305)
+            still.fill(0)
+            still.new_subpixbuf(200, 300, 800, 700).fill(0xffbb33ff)
+            still_path = root / "my-still-pet.png"
+            still.savev(str(still_path), "png", [], [])
+            self.assertEqual(load_pet_path(still_path, details=True)[3], "static")
+            _, folder = import_pet(still_path, library, settings)
+            self.assertEqual(json.loads((folder / "pet.json").read_text())["layout"], "static")
+
+            strip.fill(0x3399ffff)
+            strip.savev(str(strip_path), "png", [], [])
+            self.assertEqual(load_pet_path(strip_path, details=True)[3], "static")
+
 
 if __name__ == "__main__":
     unittest.main()

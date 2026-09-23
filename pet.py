@@ -111,9 +111,74 @@ def pet_source(path):
     return path, version, metadata
 
 
-def load_pet_path(path):
-    """Check Codex atlas geometry before using the image."""
-    path, version, _ = pet_source(path)
+def strip_boundaries(image):
+    """Find eight near-equal frames separated by transparent columns."""
+    width, height = image.get_width(), image.get_height()
+    if not image.get_has_alpha() or width < 128:
+        return None
+    pixels = image.get_pixels()
+    stride, channels = image.get_rowstride(), image.get_n_channels()
+    boundaries = [0]
+    for frame in range(1, 8):
+        center = round(frame * width / 8)
+        radius = max(8, round(width / 8 / 12))
+        gap = next((x for offset in range(radius + 1)
+                    for x in (center - offset, center + offset)
+                    if 0 < x < width and all(pixels[y * stride + x * channels + 3] == 0
+                                               for y in range(height))), None)
+        if gap is None or gap <= boundaries[-1]:
+            return None
+        boundaries.append(gap)
+    return boundaries + [width]
+
+
+def visible_bounds(image, left, right):
+    """Trim empty margins and isolated anti-aliasing pixels from a frame."""
+    height = image.get_height()
+    if not image.get_has_alpha():
+        return left, 0, right - left, height
+    pixels = image.get_pixels()
+    stride, channels = image.get_rowstride(), image.get_n_channels()
+    columns = [0] * (right - left)
+    rows = [0] * height
+    for y in range(height):
+        offset = y * stride + left * channels + 3
+        for x in range(right - left):
+            if pixels[offset + x * channels] > 24:
+                columns[x] += 1
+                rows[y] += 1
+    xs = [x for x, count in enumerate(columns) if count >= 3]
+    ys = [y for y, count in enumerate(rows) if count >= 3]
+    if not xs or not ys:
+        return left, 0, right - left, height
+    return left + xs[0], ys[0], xs[-1] - xs[0] + 1, ys[-1] - ys[0] + 1
+
+
+def normalize_pet(image, boundaries):
+    """Place strip or single-image frames into the renderer's 8×9 grid."""
+    from gi.repository import GdkPixbuf
+
+    atlas = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 1536, 1872)
+    atlas.fill(0)
+    boxes = [visible_bounds(image, boundaries[index], boundaries[index + 1])
+             for index in range(len(boundaries) - 1)]
+    for column in range(8):
+        index = column if len(boundaries) == 9 else 0
+        x, y, width, height = boxes[index]
+        frame = image.new_subpixbuf(x, y, width, height)
+        scale = min(176 / width, 184 / height)
+        scaled_width, scaled_height = max(1, round(width * scale)), max(1, round(height * scale))
+        scaled = frame.scale_simple(scaled_width, scaled_height, GdkPixbuf.InterpType.BILINEAR)
+        for row in range(9):
+            scaled.copy_area(0, 0, scaled_width, scaled_height, atlas,
+                             column * 192 + (192 - scaled_width) // 2,
+                             row * 208 + 196 - scaled_height)
+    return atlas
+
+
+def load_pet_path(path, details=False):
+    """Open a Codex atlas, an eight-frame strip or a single transparent pet."""
+    path, version, metadata = pet_source(path)
     # Import GTK only when handling an atlas or launching the UI; state tests stay headless.
     import gi
     gi.require_version("GdkPixbuf", "2.0")
@@ -121,16 +186,25 @@ def load_pet_path(path):
 
     image = GdkPixbuf.Pixbuf.new_from_file(str(path))
     width, height = image.get_width(), image.get_height()
-    if width % 8:
-        raise ValueError("El atlas debe tener 8 columnas iguales")
+    layout = metadata.get("layout")
+    if layout not in (None, "atlas", "strip", "static"):
+        raise ValueError("Formato de mascota desconocido en pet.json")
     cell = width // 8
-    rows = next((count for count in (9, 11) if height % count == 0 and
-                 (height // count) * 12 == cell * 13), None)
-    if rows is None:
-        raise ValueError("El atlas debe tener 8×9 u 8×11 celdas de proporción 192×208")
-    if version in (1, 2) and rows != (9 if version == 1 else 11):
-        raise ValueError("spriteVersionNumber no coincide con el tamaño del atlas")
-    return image, cell, height // rows
+    rows = next((count for count in (9, 11) if width % 8 == 0 and height % count == 0
+                 and (height // count) * 12 == cell * 13), None)
+    if rows and layout not in ("strip", "static"):
+        if version in (1, 2) and rows != (9 if version == 1 else 11):
+            raise ValueError("spriteVersionNumber no coincide con el tamaño del atlas")
+        result = (image, cell, height // rows)
+        return (*result, "atlas", rows) if details else result
+    if version in (1, 2) and layout not in ("strip", "static"):
+        raise ValueError("El atlas Codex no coincide con su versión en pet.json")
+    boundaries = strip_boundaries(image) if layout != "static" else None
+    if layout == "strip" and boundaries is None:
+        raise ValueError("La tira de 8 fotogramas necesita separaciones transparentes")
+    normalized = normalize_pet(image, boundaries or [0, width])
+    result = (normalized, 192, 208)
+    return (*result, "strip" if boundaries else "static", 9) if details else result
 
 
 def pet_slug(name):
@@ -139,12 +213,11 @@ def pet_slug(name):
 
 
 def import_pet(path, library=None, settings=None):
-    """Copy a user-owned ChatGPT/Codex atlas locally and select it."""
+    """Copy a user-owned atlas, eight-frame strip or single pet locally."""
     source, _, metadata = pet_source(path)
     if source.stat().st_size > 20 * 1024 * 1024:
         raise ValueError("El spritesheet no debe superar 20 MiB")
-    image, _, cell_height = load_pet_path(path)
-    version = 2 if image.get_height() // cell_height == 11 else 1
+    _, _, _, layout, rows = load_pet_path(path, details=True)
     name = metadata.get("displayName") or (source.parent.name if source.stem == "spritesheet" else source.stem)
     name = str(name).strip()[:100] or "Mascota"
     library = Path(library or pet_library())
@@ -163,7 +236,7 @@ def import_pet(path, library=None, settings=None):
     if source != sprite:
         shutil.copy2(source, sprite)
     manifest = {"id": slug, "displayName": name, "spritesheetPath": sprite.name,
-                "spriteVersionNumber": version}
+                **({"spriteVersionNumber": 2 if rows == 11 else 1} if layout == "atlas" else {"layout": layout})}
     (target / "pet.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     save_selected_pet(slug, settings)
     return slug, target

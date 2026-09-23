@@ -76,6 +76,16 @@ def look_direction(x, y):
     return "around"
 
 
+def filter_available_models(models, provider="all", query=""):
+    """Search the complete connected-model catalog by provider, name or ID."""
+    needle = query.strip().casefold()
+    return sorted((item for item in models
+                   if (provider == "all" or item["providerID"] == provider)
+                   and (not needle or any(needle in str(item[field]).casefold()
+                                          for field in ("id", "providerName", "modelName")))),
+                  key=lambda item: (item["providerName"].casefold(), item["modelName"].casefold(), item["id"]))
+
+
 def config_home():
     return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
 
@@ -692,10 +702,35 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
     model_label = Gtk.Label(label="Modelo")
     model_label.set_xalign(0)
     box.pack_start(model_label, False, False, 0)
-    model_picker = Gtk.ComboBoxText()
-    model_picker.append("default", "Predeterminado de OpenCode")
-    model_picker.set_active_id("default")
-    box.pack_start(model_picker, False, False, 0)
+    model_controls = Gtk.Box(spacing=6)
+    box.pack_start(model_controls, False, False, 0)
+    model_button = Gtk.MenuButton(label="Predeterminado de OpenCode")
+    model_controls.pack_start(model_button, True, True, 0)
+    refresh_models = Gtk.Button(label="↻")
+    refresh_models.set_tooltip_text("Actualizar proveedores y modelos de OpenCode")
+    model_controls.pack_end(refresh_models, False, False, 0)
+    model_popover = Gtk.Popover.new(model_button)
+    model_button.set_popover(model_popover)
+    model_options = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+    model_options.set_border_width(8)
+    model_popover.add(model_options)
+    provider_filter = Gtk.ComboBoxText()
+    provider_filter.append("all", "Todos los proveedores")
+    provider_filter.set_active_id("all")
+    model_options.pack_start(provider_filter, False, False, 0)
+    model_search = Gtk.SearchEntry()
+    model_search.set_placeholder_text("Buscar modelo, proveedor o ID…")
+    model_options.pack_start(model_search, False, False, 0)
+    results_scroll = Gtk.ScrolledWindow()
+    results_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    results_scroll.set_size_request(400, 260)
+    model_options.pack_start(results_scroll, True, True, 0)
+    model_results = Gtk.ListBox()
+    model_results.set_activate_on_single_click(True)
+    results_scroll.add(model_results)
+    result_count = Gtk.Label(label="Conecta OpenCode para ver modelos")
+    result_count.set_xalign(0)
+    model_options.pack_start(result_count, False, False, 0)
     custom_model = Gtk.Entry()
     custom_model.set_placeholder_text("O escribe proveedor/modelo")
     box.pack_start(custom_model, False, False, 0)
@@ -738,7 +773,7 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
     box.pack_start(feedback, False, False, 0)
 
     ui = {"directory": None, "session": None, "building": False, "loading_list": False,
-          "loading_models": False, "models_loaded_for": None, "selected_models": {},
+          "loading_models": False, "models_loaded_for": None, "selected_models": {}, "available_models": [],
           "loading_messages": False, "sending": False, "projects": (), "rows": (), "generation": 0}
 
     def background(operation, complete):
@@ -808,6 +843,47 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
 
         background(lambda: gateway.sessions(directory), complete)
 
+    def show_selected_model():
+        directory = ui["directory"]
+        chosen = ui["selected_models"].get(directory, "default")
+        if chosen == "default":
+            model_button.set_label("Predeterminado de OpenCode")
+            return
+        current = next((item for item in ui["available_models"] if item["id"] == chosen), None)
+        title = current["label"] if current else chosen
+        model_button.set_label(title[:40] + "…" if len(title) > 40 else title)
+
+    def render_model_results(*_args):
+        for row in model_results.get_children():
+            model_results.remove(row)
+        provider = provider_filter.get_active_id() or "all"
+        query = model_search.get_text()
+        matches = filter_available_models(ui["available_models"], provider, query)
+        if provider == "all" and not query.strip():
+            row = Gtk.ListBoxRow()
+            row.model_id = "default"
+            row.add(Gtk.Label(label="Predeterminado de OpenCode", xalign=0))
+            model_results.add(row)
+        for item in matches[:60]:
+            row = Gtk.ListBoxRow()
+            row.model_id = item["id"]
+            labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+            title = Gtk.Label(label=item["modelName"], xalign=0)
+            title.set_max_width_chars(46)
+            title.set_ellipsize(3)
+            detail = Gtk.Label(label=f"{item['providerName']} · {item['id']}", xalign=0)
+            detail.set_max_width_chars(46)
+            detail.set_ellipsize(3)
+            labels.pack_start(title, False, False, 0)
+            labels.pack_start(detail, False, False, 0)
+            row.add(labels)
+            model_results.add(row)
+        model_results.show_all()
+        if matches:
+            result_count.set_text(f"{len(matches)} modelos · mostrando {min(len(matches), 60)}")
+        else:
+            result_count.set_text("No hay resultados. Prueba otro nombre o ID.")
+
     def update_models():
         directory = ui["directory"]
         if (not panel.get_visible() or not directory or ui["loading_models"] or
@@ -822,14 +898,35 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
             if error:
                 feedback.set_text(error)
                 return
+            if not isinstance(items, list):
+                feedback.set_text("OpenCode devolvió un catálogo de modelos inválido.")
+                return
             ui["models_loaded_for"] = directory
-            chosen = ui["selected_models"].get(directory, "default")
-            model_picker.remove_all()
-            model_picker.append("default", "Predeterminado de OpenCode")
+            catalog = []
             for item in items:
-                model_picker.append(item["id"], item["label"])
-            if not model_picker.set_active_id(chosen):
-                model_picker.set_active_id("default")
+                if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+                    continue
+                provider_id, separator, model_id = item["id"].partition("/")
+                if not separator or not provider_id or not model_id:
+                    continue
+                catalog.append({"id": item["id"],
+                                "providerID": item.get("providerID") or provider_id,
+                                "providerName": item.get("providerName") or provider_id,
+                                "modelName": item.get("modelName") or model_id,
+                                "label": item.get("label") or item["id"]})
+            ui["available_models"] = catalog
+            selected = ui["selected_models"].get(directory, "default")
+            if selected != "default" and not any(item["id"] == selected for item in catalog):
+                ui["selected_models"][directory] = "default"
+                feedback.set_text("El modelo elegido ya no está conectado; se usará el predeterminado.")
+            provider_filter.remove_all()
+            provider_filter.append("all", "Todos los proveedores")
+            providers = {item["providerID"]: item["providerName"] for item in catalog}
+            for provider_id, name in sorted(providers.items(), key=lambda entry: entry[1].casefold()):
+                provider_filter.append(provider_id, name)
+            provider_filter.set_active_id("all")
+            show_selected_model()
+            render_model_results()
 
         background(lambda: gateway.models(directory), complete)
 
@@ -860,6 +957,7 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
     def change_project(combo):
         ui["directory"] = combo.get_active_id()
         ui["models_loaded_for"] = None
+        ui["available_models"] = []
         ui["session"] = None
         ui["generation"] += 1
         ui["rows"] = ()
@@ -868,12 +966,24 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
             tray.remove(row)
         ui["building"] = False
         transcript.get_buffer().set_text("Elige una conversación o escribe para empezar.")
+        model_search.set_text("")
+        custom_model.set_text("")
+        show_selected_model()
+        render_model_results()
         update_list()
         update_models()
 
-    def change_model(combo):
-        if ui["directory"] and combo.get_active_id():
-            ui["selected_models"][ui["directory"]] = combo.get_active_id()
+    def select_catalog_model(_list, row):
+        if row is None or not ui["directory"]:
+            return
+        ui["selected_models"][ui["directory"]] = row.model_id
+        custom_model.set_text("")
+        show_selected_model()
+        model_popover.hide()
+
+    def refresh_model_catalog(_button):
+        ui["models_loaded_for"] = None
+        update_models()
 
     def select_session(_tray, row):
         if ui["building"] or row is None:
@@ -892,7 +1002,7 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
 
     def send(_widget):
         directory, session_id, text = ui["directory"], ui["session"], entry.get_text()
-        selected_model = custom_model.get_text().strip() or model_picker.get_active_id()
+        selected_model = custom_model.get_text().strip() or ui["selected_models"].get(directory, "default")
         generation = ui["generation"]
         if ui["sending"]:
             return
@@ -924,7 +1034,11 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
                                         None if selected_model == "default" else selected_model), complete)
 
     projects.connect("changed", change_project)
-    model_picker.connect("changed", change_model)
+    provider_filter.connect("changed", render_model_results)
+    model_search.connect("changed", render_model_results)
+    model_results.connect("row-activated", select_catalog_model)
+    model_popover.connect("show", lambda *_: model_search.grab_focus())
+    refresh_models.connect("clicked", refresh_model_catalog)
     tray.connect("row-selected", select_session)
     new_button.connect("clicked", new_chat)
     send_button.connect("clicked", send)

@@ -8,12 +8,25 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from pet import (ATLAS_ANIMATIONS, LOOK_ROWS, STATUS_ANIMATIONS, OpencodeGateway, PetState, animation_frame,
-                 choose_window_backend, create_handler, import_pet,
+                 choose_window_backend, create_handler, filter_available_models, import_pet,
                  install_plugin, installed_pets, load_look_sheet, load_pet_path, look_direction,
                  pet_slug, selected_pet)
 
 
 class PetStateTest(unittest.TestCase):
+    def test_search_models_across_providers_beyond_the_visible_list(self):
+        models = [{"id": f"own/model-{number}", "modelName": f"Modelo {number}",
+                   "providerID": "own", "providerName": "Mi Proveedor"} for number in range(250)]
+        models.append({"id": "local/llama", "modelName": "Llama local",
+                       "providerID": "local", "providerName": "Local"})
+        self.assertEqual(len(filter_available_models(models)), 251)
+        self.assertEqual([item["id"] for item in filter_available_models(models, query="MODEL-249")],
+                         ["own/model-249"])
+        self.assertEqual([item["id"] for item in filter_available_models(models, provider="local")],
+                         ["local/llama"])
+        self.assertEqual(len(filter_available_models(models, provider="own", query="mi proveedor")), 250)
+        self.assertEqual(filter_available_models(models, provider="local", query="modelo"), [])
+
     def test_official_atlas_never_uses_transparent_padding(self):
         import gi
         gi.require_version("GdkPixbuf", "2.0")

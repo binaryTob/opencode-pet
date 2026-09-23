@@ -20,10 +20,18 @@ export const PetPlugin = async ({ directory, client }) => {
           const connected = new Set(result.data?.connected ?? [])
           const models = (result.data?.all ?? [])
             .filter((provider) => connected.has(provider.id))
-            .flatMap((provider) => Object.values(provider.models ?? {})
-              .filter((model) => model.status !== "deprecated")
-              .map((model) => ({ id: `${provider.id}/${model.id}`, label: `${provider.name} · ${model.name}` })))
-          return Response.json(models.slice(0, 200))
+            .flatMap((provider) => Object.entries(provider.models ?? {})
+              .filter(([, model]) => model.status !== "deprecated")
+              .map(([modelKey, model]) => ({
+                id: `${provider.id}/${model.id || modelKey}`,
+                label: `${provider.name || provider.id} · ${model.name || model.id || modelKey}`,
+                providerID: provider.id,
+                providerName: provider.name || provider.id,
+                modelName: model.name || model.id || modelKey,
+              })))
+            .sort((a, b) => a.providerName.localeCompare(b.providerName) ||
+              a.modelName.localeCompare(b.modelName) || a.id.localeCompare(b.id))
+          return Response.json(models)
         } catch {
           return new Response("OpenCode request failed", { status: 502 })
         }

@@ -6,10 +6,10 @@ A floating desktop companion for **OpenCode on Linux**. It shows when your agent
 
 ## Easy install on Ubuntu/Debian
 
-Install [OpenCode](https://opencode.ai/docs/) first. Download **`opencode-pet_0.1.0_all.deb`** from [Releases](https://github.com/binaryTob/opencode-pet/releases/latest), then run this in the directory containing the downloaded file:
+Install [OpenCode](https://opencode.ai/docs/) first. Download **`opencode-pet_0.2.0_all.deb`** from [Releases](https://github.com/binaryTob/opencode-pet/releases/latest), then run this in the directory containing the downloaded file:
 
 ```bash
-sudo apt install ./opencode-pet_0.1.0_all.deb
+sudo apt install ./opencode-pet_0.2.0_all.deb
 opencode-pet
 ```
 
@@ -28,7 +28,7 @@ For developers, `packaging/build-deb.sh` builds the package into `dist/`. We cho
 
 ## Use your own model
 
-Configure your provider with `/connect` in OpenCode, then select a model with `/models` ([provider guide](https://opencode.ai/docs/providers/)). The pet never asks for or stores API keys. Click **✎ Chats** to pick an active project, a conversation and a connected model. **Predeterminado de OpenCode** uses the model already configured in OpenCode. You can also type a provider/model ID in **O escribe proveedor/modelo** to use a custom model that is not listed. Click **+ Nueva** and type to start a new conversation. The current UI labels are in Spanish.
+Configure your provider in OpenCode with `/connect` ([provider guide](https://opencode.ai/docs/providers/)). The pet never asks for or stores API keys. In **✎ Chats**, choose a project and open the selector under **Modelo**. Filter by connected provider and use **Buscar modelo, proveedor o ID…** to search by name or ID. The list initially renders up to 60 results for speed, but the search covers **every available model**, not just the first 60. **Predeterminado de OpenCode** uses OpenCode's configured model; click **↻** after connecting a new provider to refresh the catalog. You can also type a provider/model ID in **O escribe proveedor/modelo**. Choose a conversation or click **+ Nueva** to start one. The current UI labels are in Spanish.
 
 ## Import your ChatGPT pet
 
@@ -101,6 +101,7 @@ Row 1 (8 frames) plays when the window moves right and row 2 (8) when it moves l
 
 ```bash
 python3 -m unittest -v test_pet.py
+python3 -m unittest -v test_gui.py  # with a graphical session; CI uses Xvfb
 bun test plugin.test.ts
 ```
 

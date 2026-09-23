@@ -12,9 +12,11 @@ jobs:
       - name: Install GTK bindings
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-gdkpixbuf-2.0 librsvg2-common desktop-file-utils
+          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-gdkpixbuf-2.0 librsvg2-common desktop-file-utils xvfb
       - name: Python tests
         run: /usr/bin/python3 -m unittest -v test_pet.py
+      - name: GTK model picker test
+        run: xvfb-run -a /usr/bin/python3 -m unittest -v test_gui.py
       - uses: oven-sh/setup-bun@v2
       - name: Plugin tests
         run: bun test plugin.test.ts

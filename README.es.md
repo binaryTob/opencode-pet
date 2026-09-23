@@ -6,10 +6,10 @@ Mascota de escritorio para **OpenCode en Linux**. Flota sobre las ventanas, mues
 
 ## Instalación sencilla en Ubuntu/Debian
 
-Necesitas [OpenCode](https://opencode.ai/docs/) instalado. Descarga el archivo **`opencode-pet_0.1.0_all.deb`** desde [Releases](https://github.com/binaryTob/opencode-pet/releases/latest) y, desde la carpeta donde lo descargaste, ejecuta:
+Necesitas [OpenCode](https://opencode.ai/docs/) instalado. Descarga el archivo **`opencode-pet_0.2.0_all.deb`** desde [Releases](https://github.com/binaryTob/opencode-pet/releases/latest) y, desde la carpeta donde lo descargaste, ejecuta:
 
 ```bash
-sudo apt install ./opencode-pet_0.1.0_all.deb
+sudo apt install ./opencode-pet_0.2.0_all.deb
 opencode-pet
 ```
 
@@ -28,7 +28,7 @@ Si desarrollas en este repositorio, `packaging/build-deb.sh` genera el `.deb` en
 
 ## Elegir tu modelo
 
-Configura tu proveedor en OpenCode con `/connect` y selecciona un modelo con `/models` ([guía de proveedores](https://opencode.ai/docs/providers/)). La mascota no recibe ni guarda claves de API. En **✎ Chats**, escoge un proyecto, una sesión y un modelo conectado en el desplegable. **Predeterminado de OpenCode** usa el modelo configurado allí. Si tu modelo no aparece, escribe su ID en **O escribe proveedor/modelo**. Pulsa **+ Nueva** y escribe para crear otra sesión.
+Configura tu proveedor en OpenCode con `/connect` ([guía de proveedores](https://opencode.ai/docs/providers/)). La mascota no recibe ni guarda claves de API. En **✎ Chats**, escoge un proyecto y abre el selector bajo **Modelo**: elige **Todos los proveedores** o filtra por uno conectado, y usa **Buscar modelo, proveedor o ID…** para encontrar cualquiera de sus modelos. La lista muestra primero hasta 60 resultados para no ralentizar la ventana, pero el buscador consulta **todo el catálogo disponible**, no solo los primeros 60. **Predeterminado de OpenCode** usa el modelo configurado allí; el botón **↻** refresca la lista después de conectar un proveedor. También puedes escribir un ID manual en **O escribe proveedor/modelo**. Elige una sesión o pulsa **+ Nueva** y escribe para empezar.
 
 ## Importar tu mascota de ChatGPT
 
@@ -101,6 +101,7 @@ El botón **✎ Chats** abre las sesiones recientes de los proyectos donde esté
 
 ```bash
 python3 -m unittest -v test_pet.py
+python3 -m unittest -v test_gui.py  # con sesión gráfica; CI usa Xvfb
 bun test plugin.test.ts
 ```
 

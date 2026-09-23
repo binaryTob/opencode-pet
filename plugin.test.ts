@@ -19,14 +19,22 @@ test("forwards session activity and permission states, but no conversation conte
   }) as typeof fetch
 
   const calls: unknown[] = []
+  const manyModels = Object.fromEntries(Array.from({ length: 250 }, (_, index) => [
+    `model-${index}`, { id: `model-${index}`, name: `Model ${index}`, status: "active" },
+  ]))
   const client = { session: {
     list: async () => ({ data: [{ id: "s-1", title: "Test" }] }),
     create: async () => ({ data: { id: "s-2" } }),
     messages: async () => ({ data: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "hola" }] }] }),
     promptAsync: async (request: unknown) => { calls.push(request); return { data: undefined } },
   }, provider: {
-    list: async () => ({ data: { connected: ["own"], all: [
-      { id: "own", name: "My provider", models: { custom: { id: "custom", name: "My model", status: "active" } } },
+    list: async () => ({ data: { connected: ["own", "local"], all: [
+      { id: "own", name: "My provider", key: "secret-not-for-the-pet", models: {
+        custom: { id: "custom", name: "My model", status: "active" },
+        retired: { id: "retired", name: "Retired", status: "deprecated" },
+        ...manyModels,
+      } },
+      { id: "local", name: "Local", models: { llama: { id: "llama", name: "Llama", status: "active" } } },
       { id: "other", name: "Other", models: { hidden: { id: "hidden", name: "Hidden" } } },
     ] } }),
   } }
@@ -34,9 +42,16 @@ test("forwards session activity and permission states, but no conversation conte
   await Bun.sleep(1)
   expect(relayUrl).toStartWith("http://127.0.0.1:")
   expect((await (await originalFetch(`${relayUrl}/session?directory=%2Fwork`)).json())[0].title).toBe("Test")
-  expect(await (await originalFetch(`${relayUrl}/models?directory=%2Fwork`)).json()).toEqual([
-    { id: "own/custom", label: "My provider · My model" },
-  ])
+  const catalog = await (await originalFetch(`${relayUrl}/models?directory=%2Fwork`)).json()
+  expect(catalog).toHaveLength(252)
+  expect(catalog.find((item: { id: string }) => item.id === "own/custom")).toEqual({
+    id: "own/custom", label: "My provider · My model", providerID: "own",
+    providerName: "My provider", modelName: "My model",
+  })
+  expect(catalog.some((item: { id: string }) => item.id === "own/model-249")).toBe(true)
+  expect(catalog.some((item: { id: string }) => item.id === "local/llama")).toBe(true)
+  expect(catalog.some((item: { id: string }) => item.id === "other/hidden" || item.id === "own/retired")).toBe(false)
+  expect(JSON.stringify(catalog)).not.toContain("secret-not-for-the-pet")
   expect((await (await originalFetch(`${relayUrl}/session?directory=%2Fwork`, { method: "POST", body: "{}" })).json()).id).toBe("s-2")
   expect((await (await originalFetch(`${relayUrl}/session/s-1/message?directory=%2Fwork`)).json())[0].parts[0].text).toBe("hola")
   const prompt = await originalFetch(`${relayUrl}/session/s-1/prompt_async?directory=%2Fwork`, {

@@ -21,14 +21,59 @@ HOST = "127.0.0.1"
 PORT = 47829
 CELL_WIDTH = 192
 CELL_HEIGHT = 208
-ROWS = {"idle": 0, "running": 7, "waiting": 6, "ready": 3, "blocked": 5}
+# OpenAI hatch-pet animation rows: https://github.com/openai/skills/blob/main/skills/.curated/hatch-pet/references/animation-rows.md
+ATLAS_ANIMATIONS = {
+    "idle": (0, (280, 110, 110, 140, 140, 320)),
+    "running-right": (1, (120, 120, 120, 120, 120, 120, 120, 220)),
+    "running-left": (2, (120, 120, 120, 120, 120, 120, 120, 220)),
+    "waving": (3, (140, 140, 140, 280)),
+    "jumping": (4, (140, 140, 140, 140, 280)),
+    "failed": (5, (140, 140, 140, 140, 140, 140, 140, 240)),
+    "waiting": (6, (150, 150, 150, 150, 150, 260)),
+    "running": (7, (120, 120, 120, 120, 120, 220)),
+    "review": (8, (150, 150, 150, 150, 150, 280)),
+}
+LOOK_ROWS = {"around": 0, "up": 1, "right": 2, "left": 3}
+STATUS_ANIMATIONS = {"idle": "idle", "running": "running", "waiting": "waiting",
+                     "ready": "waving", "blocked": "failed", "review": "review",
+                     "moving-right": "running-right", "moving-left": "running-left",
+                     "celebrating": "jumping"}
 LABELS = {
     "idle": "OpenCode · en reposo",
     "running": "OpenCode · trabajando",
     "waiting": "OpenCode · necesita tu respuesta",
     "ready": "OpenCode · terminado",
     "blocked": "OpenCode · error",
+    "review": "OpenCode · revisando",
 }
+
+
+def animation_frame(status, elapsed_ms, layout="atlas", reduced_motion=False):
+    """Pick an occupied frame with the official atlas timing for a status."""
+    row, durations = ATLAS_ANIMATIONS[STATUS_ANIMATIONS[status]]
+    if layout == "static" or reduced_motion:
+        return (0 if layout != "atlas" else row), 0
+    if layout == "strip":
+        return 0, int(max(0, elapsed_ms) // 160) % 8
+    if layout != "atlas":
+        raise ValueError(f"Formato de animación desconocido: {layout}")
+    position = max(0, elapsed_ms) % sum(durations)
+    for index, duration in enumerate(durations):
+        if position < duration:
+            return row, index
+        position -= duration
+    return row, 0
+
+
+def look_direction(x, y):
+    """Choose a cursor animation within the 180×165 pet image."""
+    if x < 60:
+        return "left"
+    if x > 120:
+        return "right"
+    if y < 55:
+        return "up"
+    return "around"
 
 
 def config_home():
@@ -176,6 +221,153 @@ def normalize_pet(image, boundaries):
     return atlas
 
 
+def build_state_atlas(folder, spec):
+    """Assemble independently generated animation strips into a Codex atlas."""
+    import gi
+    gi.require_version("GdkPixbuf", "2.0")
+    from gi.repository import GdkPixbuf
+
+    animations = spec.get("animations") if isinstance(spec, dict) else None
+    if not isinstance(animations, dict):
+        raise ValueError("states.json necesita un objeto 'animations'")
+    missing = set(ATLAS_ANIMATIONS) - set(animations)
+    if missing:
+        raise ValueError("Faltan animaciones: " + ", ".join(sorted(missing)))
+    atlas = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 1536, 1872)
+    atlas.fill(0)
+    digest = hashlib.sha256()
+    for state, (row, durations) in ATLAS_ANIMATIONS.items():
+        image, count, path = load_animation_strip(folder, animations[state], state, len(durations))
+        digest.update(state.encode())
+        digest.update(path.read_bytes())
+        copy_animation_row(image, count, atlas, row)
+    return atlas, digest.hexdigest()
+
+
+def load_animation_strip(folder, entry, name, expected=None):
+    from gi.repository import GdkPixbuf
+
+    if not isinstance(entry, dict) or not isinstance(entry.get("file"), str):
+        raise ValueError(f"'{name}' necesita 'file' y 'frames'")
+    filename, count = entry["file"], entry.get("frames")
+    if type(count) is not int or not 1 <= count <= 8 or (expected and count != expected):
+        detail = f"{expected}" if expected else "entre 1 y 8"
+        raise ValueError(f"'{name}' necesita {detail} fotogramas, no {count}")
+    if filename != Path(filename).name or Path(filename).suffix.lower() not in (".png", ".webp"):
+        raise ValueError(f"'{name}' debe señalar un PNG/WebP dentro de la carpeta")
+    path = folder / filename
+    if path.resolve().parent != folder.resolve() or not path.is_file():
+        raise ValueError(f"No se encontró la imagen de '{name}' en la carpeta")
+    if path.stat().st_size > 20 * 1024 * 1024:
+        raise ValueError(f"La imagen de '{name}' supera 20 MiB")
+    return GdkPixbuf.Pixbuf.new_from_file(str(path)), count, path
+
+
+def copy_animation_row(image, count, atlas, row):
+    from gi.repository import GdkPixbuf
+
+    for column in range(count):
+        left, right = round(column * image.get_width() / count), round((column + 1) * image.get_width() / count)
+        x, y, width, height = visible_bounds(image, left, right)
+        frame = image.new_subpixbuf(x, y, width, height)
+        scale = min(176 / width, 184 / height)
+        scaled_width, scaled_height = max(1, round(width * scale)), max(1, round(height * scale))
+        scaled = frame.scale_simple(scaled_width, scaled_height, GdkPixbuf.InterpType.BILINEAR)
+        scaled.copy_area(0, 0, scaled_width, scaled_height, atlas,
+                         column * 192 + (192 - scaled_width) // 2,
+                         row * 208 + 196 - scaled_height)
+
+
+def build_look_sheet(folder, spec):
+    """Keep optional cursor animations separate from the nine official rows."""
+    import gi
+    gi.require_version("GdkPixbuf", "2.0")
+    from gi.repository import GdkPixbuf
+
+    looks = spec.get("look", {})
+    if not isinstance(looks, dict) or set(looks) - set(LOOK_ROWS):
+        raise ValueError("'look' debe usar around, up, right o left")
+    if not looks:
+        return None, {}, ""
+    sheet = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 1536, 832)
+    sheet.fill(0)
+    digest = hashlib.sha256()
+    counts = {}
+    for name, row in LOOK_ROWS.items():
+        if name not in looks:
+            continue
+        image, count, path = load_animation_strip(folder, looks[name], name)
+        digest.update(name.encode())
+        digest.update(path.read_bytes())
+        copy_animation_row(image, count, sheet, row)
+        counts[name] = count
+    return sheet, counts, digest.hexdigest()
+
+
+def load_look_sheet(path):
+    """Read the optional locally generated cursor sheet for an installed pet."""
+    import gi
+    gi.require_version("GdkPixbuf", "2.0")
+    from gi.repository import GdkPixbuf
+
+    folder = Path(path).expanduser().resolve()
+    if not folder.is_dir() or not (folder / "pet.json").is_file():
+        return None, {}
+    metadata = json.loads((folder / "pet.json").read_text(encoding="utf-8"))
+    if "lookSheetPath" not in metadata:
+        return None, {}
+    if metadata["lookSheetPath"] != "looksheet.png":
+        raise ValueError("Nombre de lámina de mirada inválido")
+    image = GdkPixbuf.Pixbuf.new_from_file(str(folder / "looksheet.png"))
+    if (image.get_width(), image.get_height()) != (1536, 832):
+        raise ValueError("La lámina de mirada debe medir 1536×832")
+    counts = metadata.get("lookFrames", {})
+    if not isinstance(counts, dict) or any(name not in LOOK_ROWS or type(count) is not int or not 1 <= count <= 8
+                                            for name, count in counts.items()):
+        raise ValueError("Fotogramas de mirada inválidos")
+    return image, counts
+
+
+def import_state_pet(folder, library=None, settings=None):
+    """Install a states.json package without publishing any source artwork."""
+    folder = Path(folder).expanduser().resolve()
+    spec = json.loads((folder / "states.json").read_text(encoding="utf-8"))
+    atlas, fingerprint = build_state_atlas(folder, spec)
+    look_sheet, look_counts, look_fingerprint = build_look_sheet(folder, spec)
+    if look_sheet is not None:
+        fingerprint = hashlib.sha256((fingerprint + look_fingerprint).encode()).hexdigest()
+    name = str(spec.get("displayName") or folder.name).strip()[:100] or "Mascota"
+    library = Path(library or pet_library())
+    base, slug = pet_slug(str(spec.get("id") or name)), None
+    for counter in range(1, 1000):
+        candidate = base if counter == 1 else f"{base}-{counter}"
+        target = library / candidate
+        manifest = target / "pet.json"
+        if not target.exists():
+            slug = candidate
+            break
+        try:
+            if json.loads(manifest.read_text(encoding="utf-8")).get("sourceDigest") == fingerprint:
+                slug = candidate
+                break
+        except (OSError, ValueError, AttributeError):
+            pass
+    if slug is None:
+        raise ValueError("Demasiadas mascotas con el mismo nombre")
+    target = library / slug
+    target.mkdir(parents=True, exist_ok=True)
+    atlas.savev(str(target / "spritesheet.png"), "png", [], [])
+    if look_sheet is not None:
+        look_sheet.savev(str(target / "looksheet.png"), "png", [], [])
+    (target / "pet.json").write_text(json.dumps({
+        "id": slug, "displayName": name, "spritesheetPath": "spritesheet.png",
+        "spriteVersionNumber": 1, "sourceDigest": fingerprint,
+        **({"lookSheetPath": "looksheet.png", "lookFrames": look_counts} if look_sheet else {}),
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    save_selected_pet(slug, settings)
+    return slug, target
+
+
 def load_pet_path(path, details=False):
     """Open a Codex atlas, an eight-frame strip or a single transparent pet."""
     path, version, metadata = pet_source(path)
@@ -214,6 +406,8 @@ def pet_slug(name):
 
 def import_pet(path, library=None, settings=None):
     """Copy a user-owned atlas, eight-frame strip or single pet locally."""
+    if (Path(path).expanduser() / "states.json").is_file():
+        return import_state_pet(path, library, settings)
     source, _, metadata = pet_source(path)
     if source.stat().st_size > 20 * 1024 * 1024:
         raise ValueError("El spritesheet no debe superar 20 MiB")
@@ -282,6 +476,7 @@ class PetState:
             return True
         transitions = {
             "session.busy": "running",
+            "session.review": "review",
             "session.idle": "ready",
             "session.waiting": "waiting",
             "session.error": "blocked",
@@ -340,7 +535,7 @@ class PetState:
         for status, timestamp in sessions:
             if status != "ready" or self.now() - timestamp < 12:
                 active.add(status)
-        for status in ("waiting", "blocked", "ready", "running"):
+        for status in ("waiting", "blocked", "ready", "review", "running"):
             if status in active:
                 return status
         return "idle"
@@ -451,7 +646,7 @@ class OpencodeGateway:
 def placeholder(status, tick):
     """Create a tiny original SVG character without an external image dependency."""
     colors = {"idle": "#75c2f5", "running": "#75e6a6", "waiting": "#ffc261",
-              "ready": "#c09fff", "blocked": "#ff7a7d"}
+              "ready": "#c09fff", "blocked": "#ff7a7d", "review": "#64c6d9"}
     extra = "?" if status == "waiting" else "!" if status == "blocked" else ""
     bounce = math.sin(tick / 3) * (3 if status == "running" else 1)
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="180" height="165" viewBox="0 0 180 165">
@@ -764,7 +959,8 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
     return toggle
 
 
-def run_gui(state, image=None, cell_width=CELL_WIDTH, cell_height=CELL_HEIGHT, pet_name=None):
+def run_gui(state, image=None, cell_width=CELL_WIDTH, cell_height=CELL_HEIGHT,
+            pet_name=None, pet_layout="atlas", look_image=None, look_counts=None):
     import gi
     gi.require_version("Gtk", "3.0")
     gi.require_version("Gdk", "3.0")
@@ -801,12 +997,15 @@ def run_gui(state, image=None, cell_width=CELL_WIDTH, cell_height=CELL_HEIGHT, p
     pet_button.set_tooltip_text("Importar o cambiar mascota")
     buttons.pack_start(pet_button, True, True, 0)
 
-    sprite = {"image": image, "width": cell_width, "height": cell_height, "name": pet_name}
+    sprite = {"image": image, "width": cell_width, "height": cell_height,
+              "name": pet_name, "layout": pet_layout,
+              "look_image": look_image, "look_counts": look_counts or {}}
 
     def select_sprite(slug):
         if slug:
             try:
-                pixbuf, width, height = load_pet_path(pet_library() / slug)
+                pixbuf, width, height, layout, _ = load_pet_path(pet_library() / slug, details=True)
+                look_pixbuf, frames = load_look_sheet(pet_library() / slug)
             except (ValueError, OSError, json.JSONDecodeError) as exc:
                 error = Gtk.MessageDialog(transient_for=window, flags=0, message_type=Gtk.MessageType.ERROR,
                                           buttons=Gtk.ButtonsType.CLOSE, text="No se pudo cargar la mascota")
@@ -814,9 +1013,11 @@ def run_gui(state, image=None, cell_width=CELL_WIDTH, cell_height=CELL_HEIGHT, p
                 error.run()
                 error.destroy()
                 return
-            sprite.update(image=pixbuf, width=width, height=height, name=slug)
+            sprite.update(image=pixbuf, width=width, height=height, name=slug, layout=layout,
+                          look_image=look_pixbuf, look_counts=frames)
         else:
-            sprite.update(image=None, width=CELL_WIDTH, height=CELL_HEIGHT, name=None)
+            sprite.update(image=None, width=CELL_WIDTH, height=CELL_HEIGHT, name=None, layout="static",
+                          look_image=None, look_counts={})
         save_selected_pet(slug)
 
     def choose_image(_item):
@@ -842,11 +1043,32 @@ def run_gui(state, image=None, cell_width=CELL_WIDTH, cell_height=CELL_HEIGHT, p
                 return
             select_sprite(slug)
 
+    def choose_folder(_item):
+        dialog = Gtk.FileChooserDialog(title="Importar animaciones con states.json", transient_for=window,
+                                       action=Gtk.FileChooserAction.SELECT_FOLDER)
+        dialog.add_buttons("Cancelar", Gtk.ResponseType.CANCEL, "Importar", Gtk.ResponseType.OK)
+        folder = dialog.get_filename() if dialog.run() == Gtk.ResponseType.OK else None
+        dialog.destroy()
+        if folder:
+            try:
+                slug, _ = import_pet(folder)
+            except (ValueError, OSError, json.JSONDecodeError) as exc:
+                error = Gtk.MessageDialog(transient_for=window, flags=0, message_type=Gtk.MessageType.ERROR,
+                                          buttons=Gtk.ButtonsType.CLOSE, text="No se pudo importar la carpeta")
+                error.format_secondary_text(str(exc))
+                error.run()
+                error.destroy()
+                return
+            select_sprite(slug)
+
     def show_pets(button):
         menu = Gtk.Menu()
         import_item = Gtk.MenuItem(label="Importar PNG/WebP…")
         import_item.connect("activate", choose_image)
         menu.append(import_item)
+        folder_item = Gtk.MenuItem(label="Importar carpeta animada…")
+        folder_item.connect("activate", choose_folder)
+        menu.append(folder_item)
         default_item = Gtk.MenuItem(label="Mascota original")
         default_item.connect("activate", lambda *_: select_sprite(None))
         menu.append(default_item)
@@ -876,27 +1098,72 @@ def run_gui(state, image=None, cell_width=CELL_WIDTH, cell_height=CELL_HEIGHT, p
             menu.popup_at_pointer(event)
         return True
 
-    window.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+    pointer = {"inside": False, "x": 90, "y": 82}
+
+    def pointer_moved(_window, event):
+        pointer.update(inside=0 <= event.x < 180 and 0 <= event.y < 165, x=event.x, y=event.y)
+        return False
+
+    def pointer_left(_window, _event):
+        pointer["inside"] = False
+        return False
+
+    window.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.POINTER_MOTION_MASK |
+                      Gdk.EventMask.LEAVE_NOTIFY_MASK)
     window.connect("button-press-event", popup)
+    window.connect("motion-notify-event", pointer_moved)
+    window.connect("leave-notify-event", pointer_left)
 
     tick = [0]
+    phase = {"status": None, "layout": None, "since": monotonic()}
+    activity = {"status": None, "since": monotonic()}
+    motion = {"x": None, "name": None, "until": 0}
 
     def animate():
         tick[0] += 1
         status = state.status
+        layout = sprite["layout"]
+        now = monotonic()
+        if status != activity["status"]:
+            activity.update(status=status, since=now)
+        visual = status
+        if layout == "atlas":
+            x, _ = window.get_position()
+            if motion["x"] is not None and abs(x - motion["x"]) >= 2:
+                motion.update(name="moving-right" if x > motion["x"] else "moving-left", until=now + 0.7)
+            motion["x"] = x
+            if status not in ("waiting", "blocked") and now < motion["until"]:
+                visual = motion["name"]
+            elif status == "ready" and now - activity["since"] < sum(ATLAS_ANIMATIONS["jumping"][1]) / 1000:
+                visual = "celebrating"
+            if visual == "idle" and pointer["inside"] and sprite["look_image"] is not None:
+                direction = look_direction(pointer["x"], pointer["y"])
+                if direction in sprite["look_counts"]:
+                    visual = "look-" + direction
+        if visual != phase["status"] or layout != phase["layout"]:
+            phase.update(status=visual, layout=layout, since=now)
+        reduced_motion = not Gtk.Settings.get_default().get_property("gtk-enable-animations")
         if sprite["image"] is not None:
-            frame = (tick[0] // 2) % 8
-            frame_image = sprite["image"].new_subpixbuf(frame * sprite["width"], ROWS[status] * sprite["height"],
-                                                         sprite["width"], sprite["height"])
+            if visual.startswith("look-"):
+                direction = visual[5:]
+                row = LOOK_ROWS[direction]
+                count = sprite["look_counts"][direction]
+                frame = 0 if reduced_motion else int((now - phase["since"]) * 1000 // 140) % count
+                frame_image = sprite["look_image"].new_subpixbuf(frame * 192, row * 208, 192, 208)
+            else:
+                row, frame = animation_frame(visual, (now - phase["since"]) * 1000,
+                                             layout, reduced_motion)
+                frame_image = sprite["image"].new_subpixbuf(frame * sprite["width"], row * sprite["height"],
+                                                             sprite["width"], sprite["height"])
             canvas.set_from_pixbuf(frame_image.scale_simple(148, 160, GdkPixbuf.InterpType.NEAREST))
         else:
-            canvas.set_from_pixbuf(pixbuf_from_svg(placeholder(status, tick[0])))
+            canvas.set_from_pixbuf(pixbuf_from_svg(placeholder(status, 0 if reduced_motion else tick[0])))
         label.set_text(LABELS[state.status])
         return True
 
-    GLib.timeout_add(110, animate)
-    animate()
+    GLib.timeout_add(50, animate)
     window.show_all()
+    animate()
     Gtk.main()
 
 
@@ -932,6 +1199,8 @@ def main():
     state = PetState()
     image = None
     cell_width, cell_height = CELL_WIDTH, CELL_HEIGHT
+    layout = "static"
+    look_image, look_counts = None, {}
     chosen = args.pet or selected_pet()
     slug = None
     if chosen:
@@ -939,7 +1208,9 @@ def main():
             installed = {name for name, _ in installed_pets()}
             slug = chosen if chosen in installed else None
             if args.pet or slug:
-                image, cell_width, cell_height = load_pet_path(pet_library() / slug if slug else chosen)
+                image, cell_width, cell_height, layout, _ = load_pet_path(
+                    pet_library() / slug if slug else chosen, details=True)
+                look_image, look_counts = load_look_sheet(pet_library() / slug if slug else chosen)
         except (ValueError, OSError, json.JSONDecodeError) as exc:
             if args.pet:
                 parser.error(str(exc))
@@ -951,7 +1222,7 @@ def main():
     server.daemon_threads = True
     Thread(target=server.serve_forever, daemon=True).start()
     try:
-        run_gui(state, image, cell_width, cell_height, slug)
+        run_gui(state, image, cell_width, cell_height, slug, layout, look_image, look_counts)
     finally:
         server.shutdown()
         server.server_close()

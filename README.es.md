@@ -29,7 +29,53 @@ Descarga tu imagen transparente PNG/WebP de ChatGPT/Codex. Se admiten atlas Code
 - En la terminal: `python3 pet.py --import-pet "/ruta/a/mi-spritesheet.png"`; reinicia la ventana para verla.
 - `python3 pet.py --list-pets` muestra las mascotas guardadas; `python3 pet.py --pet nombre-importado` escoge una al iniciar.
 
+### Cargar todas las animaciones generadas por GPT
+
+Si ChatGPT te dio **una imagen distinta por tarea**, colócalas juntas en una carpeta **fuera del repositorio** y crea allí `states.json`. Así puedes importar en una sola operación las **nueve animaciones de estados** y, opcionalmente, **cuatro animaciones de mirada al cursor**. Declara cada imagen y su número de fotogramas: reposo, saludo, salto, espera y trabajo no usan la misma cantidad. Los nombres de archivo que aparecen abajo son ejemplos; reemplázalos por los tuyos.
+
+```json
+{
+  "id": "mi-mascota",
+  "displayName": "Mi mascota",
+  "animations": {
+    "idle":          { "file": "idle.png", "frames": 6 },
+    "running-right": { "file": "right.png", "frames": 8 },
+    "running-left":  { "file": "left.png", "frames": 8 },
+    "waving":        { "file": "wave.png", "frames": 4 },
+    "jumping":       { "file": "jump.png", "frames": 5 },
+    "failed":        { "file": "error.png", "frames": 8 },
+    "waiting":       { "file": "waiting.png", "frames": 6 },
+    "running":       { "file": "working.png", "frames": 6 },
+    "review":        { "file": "review.png", "frames": 6 }
+  },
+  "look": {
+    "around": { "file": "look-around.png", "frames": 4 },
+    "up":     { "file": "look-up.png", "frames": 8 },
+    "right":  { "file": "look-right.png", "frames": 8 },
+    "left":   { "file": "look-left.png", "frames": 8 }
+  }
+}
+```
+
+Importa con `python3 pet.py --import-pet "/ruta/a/carpeta"` o **Mascota → Importar carpeta animada…**. El programa recorta cada tira según su propio recuento, compone el atlas y guarda el resultado solo en tu directorio de datos. Las imágenes originales permanecen en la carpeta de origen. El formato Codex admite como máximo ocho fotogramas por fila; por eso la importación comprueba los recuentos oficiales. El bloque `look` es opcional: sus animaciones se guardan aparte y hacen que la mascota **siga el cursor cuando está en reposo**, sin reemplazar estados como trabajo, espera o error. Cada tira de `look` puede tener entre uno y ocho fotogramas. Si GPT también generó una imagen base de referencia, puedes conservarla en la misma carpeta; no hace falta declararla porque la mascota usa las animaciones.
+
+**Privacidad:** `states.json`, las imágenes originales, el atlas compilado, tu elección de mascota y las credenciales de tu proveedor se mantienen en tu equipo. El repositorio contiene solo código y un ejemplo genérico de la estructura; no copies tus archivos personales a Git.
+
 Las mascotas se guardan **solo localmente** en `${XDG_DATA_HOME:-~/.local/share}/opencode-pet/pets/`. La selección se recuerda en `${XDG_CONFIG_HOME:-~/.config}/opencode-pet/settings.json`. Sin ninguna imagen funciona con un dibujo original incluido. Los assets de otras personas no forman parte de este repositorio: importa imágenes sobre las que tengas derecho de uso.
+
+### Estados de animación
+
+Con un atlas Codex 8×9, el reproductor sigue las [filas y duraciones oficiales de `hatch-pet` de OpenAI](https://github.com/openai/skills/blob/main/skills/.curated/hatch-pet/references/animation-rows.md). Una tira horizontal de ocho fotogramas contiene **una sola animación**: se repite en todos los estados, aunque la etiqueta de estado sí cambie.
+
+| Estado en OpenCode | Fila del atlas | Comportamiento |
+| --- | ---: | --- |
+| Reposo | 0 · idle | Movimiento tranquilo, 6 fotogramas |
+| Trabajando | 7 · running | Concentración, 6 fotogramas (no correr a pie) |
+| Necesita respuesta | 6 · waiting | Esperar aprobación o respuesta, 6 fotogramas |
+| Terminó | 3 · waving | Aviso de finalización, 4 fotogramas |
+| Error | 5 · failed | Reacción al fallo, 8 fotogramas |
+
+La fila 1 (8 fotogramas) se usa al mover la ventana hacia la derecha y la 2 (8) al moverla a la izquierda. La fila 4 (5) celebra brevemente al terminar y después pasa al saludo. La fila 8 (6) se activa si OpenCode emite el comando `review` o `code-review`. Actualmente «Terminó» dura 12 segundos en vez de comprobar mensajes sin leer.
 
 ## Uso y resolución de problemas
 

@@ -7,11 +7,47 @@ from threading import Thread
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from pet import (OpencodeGateway, PetState, choose_window_backend, create_handler, import_pet,
-                 install_plugin, installed_pets, load_pet_path, pet_slug, selected_pet)
+from pet import (ATLAS_ANIMATIONS, LOOK_ROWS, STATUS_ANIMATIONS, OpencodeGateway, PetState, animation_frame,
+                 choose_window_backend, create_handler, import_pet,
+                 install_plugin, installed_pets, load_look_sheet, load_pet_path, look_direction,
+                 pet_slug, selected_pet)
 
 
 class PetStateTest(unittest.TestCase):
+    def test_official_atlas_never_uses_transparent_padding(self):
+        import gi
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf
+
+        atlas = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 1536, 1872)
+        atlas.fill(0)
+        for row, durations in ATLAS_ANIMATIONS.values():
+            for column in range(len(durations)):
+                atlas.new_subpixbuf(column * 192, row * 208, 1, 1).fill(0xffffffff)
+        for status, name in STATUS_ANIMATIONS.items():
+            row, durations = ATLAS_ANIMATIONS[name]
+            self.assertEqual(animation_frame(status, 0), (row, 0))
+            self.assertEqual(animation_frame(status, durations[0]), (row, 1))
+            self.assertEqual(animation_frame(status, sum(durations)), (row, 0))
+            for millis in range(0, sum(durations), 37):
+                chosen_row, column = animation_frame(status, millis)
+                self.assertLess(column, len(durations))
+                frame = atlas.new_subpixbuf(column * 192, chosen_row * 208, 1, 1)
+                self.assertEqual(frame.get_pixels()[3], 255)
+            self.assertEqual(animation_frame(status, 500, reduced_motion=True), (row, 0))
+            self.assertEqual(animation_frame(status, 500, layout="static"), (0, 0))
+            self.assertEqual(animation_frame(status, 500, layout="strip"), (0, 3))
+        self.assertEqual(animation_frame("ready", 140), (3, 1))
+        self.assertEqual(animation_frame("blocked", 140), (5, 1))
+        self.assertEqual(animation_frame("moving-right", 120), (1, 1))
+        self.assertEqual(animation_frame("moving-left", 120), (2, 1))
+        self.assertEqual(animation_frame("celebrating", 140), (4, 1))
+        self.assertEqual(animation_frame("review", 150), (8, 1))
+        self.assertEqual(look_direction(20, 80), "left")
+        self.assertEqual(look_direction(160, 80), "right")
+        self.assertEqual(look_direction(90, 20), "up")
+        self.assertEqual(look_direction(90, 90), "around")
+
     def test_install_plugin_is_idempotent_and_preserves_other_plugins(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "plugins" / "pet.js"
@@ -40,6 +76,9 @@ class PetStateTest(unittest.TestCase):
         self.assertEqual(state.status, "waiting")
         state.update({"type": "session.busy", "sessionID": "b"})
         self.assertEqual(state.status, "running")
+        state.update({"type": "session.review", "sessionID": "b"})
+        self.assertEqual(state.status, "review")
+        state.update({"type": "session.busy", "sessionID": "b"})
         state.update({"type": "session.error", "sessionID": "a"})
         self.assertEqual(state.status, "blocked")
         state.update({"type": "session.busy", "sessionID": "a"})
@@ -235,6 +274,64 @@ class PetStateTest(unittest.TestCase):
             strip.fill(0x3399ffff)
             strip.savev(str(strip_path), "png", [], [])
             self.assertEqual(load_pet_path(strip_path, details=True)[3], "static")
+
+    def test_import_folder_with_independent_animation_rows(self):
+        import gi
+        gi.require_version("GdkPixbuf", "2.0")
+        from gi.repository import GdkPixbuf
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, library = root / "source", root / "pets"
+            source.mkdir()
+            animations = {}
+            for state, (row, durations) in ATLAS_ANIMATIONS.items():
+                count = len(durations)
+                image = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, count * 64, 96)
+                image.fill(0)
+                for frame in range(count):
+                    image.new_subpixbuf(frame * 64 + 8, 12, 48, 72).fill(0x3388ffff)
+                filename = state + ".png"
+                image.savev(str(source / filename), "png", [], [])
+                animations[state] = {"file": filename, "frames": count}
+            looks = {}
+            for name in LOOK_ROWS:
+                count = 4 if name == "around" else 8
+                image = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, count * 64, 96)
+                image.fill(0)
+                for frame in range(count):
+                    image.new_subpixbuf(frame * 64 + 8, 12, 48, 72).fill(0x66aaffff)
+                filename = "look-" + name + ".png"
+                image.savev(str(source / filename), "png", [], [])
+                looks[name] = {"file": filename, "frames": count}
+            (source / "states.json").write_text(json.dumps({
+                "id": "mascota-prueba", "displayName": "Mascota prueba",
+                "animations": animations, "look": looks,
+            }))
+            settings = root / "settings.json"
+            slug, installed = import_pet(source, library, settings)
+            self.assertEqual(slug, "mascota-prueba")
+            self.assertEqual(selected_pet(settings), slug)
+            self.assertEqual(import_pet(source, library, settings)[0], slug)
+            atlas, width, height, layout, rows = load_pet_path(installed, details=True)
+            self.assertEqual((width, height, layout, rows), (192, 208, "atlas", 9))
+            look_image, counts = load_look_sheet(installed)
+            self.assertEqual((look_image.get_width(), look_image.get_height()), (1536, 832))
+            self.assertEqual(counts, {name: (4 if name == "around" else 8) for name in LOOK_ROWS})
+            pixels, stride = atlas.get_pixels(), atlas.get_rowstride()
+            for row, durations in ATLAS_ANIMATIONS.values():
+                for frame in range(8):
+                    alpha = pixels[(row * 208 + 100) * stride + (frame * 192 + 96) * 4 + 3]
+                    self.assertEqual(alpha == 255, frame < len(durations))
+            pixels, stride = look_image.get_pixels(), look_image.get_rowstride()
+            for name, row in LOOK_ROWS.items():
+                for frame in range(8):
+                    alpha = pixels[(row * 208 + 100) * stride + (frame * 192 + 96) * 4 + 3]
+                    self.assertEqual(alpha == 255, frame < counts[name])
+            animations["idle"]["file"] = "../escape.png"
+            (source / "states.json").write_text(json.dumps({"animations": animations}))
+            with self.assertRaisesRegex(ValueError, "dentro de la carpeta"):
+                import_pet(source, library, settings)
 
 
 if __name__ == "__main__":

@@ -117,6 +117,9 @@ export const PetPlugin = async ({ directory, client }) => {
         case "question.replied":
           type = "session.busy"
           break
+        case "command.executed":
+          if (properties.name === "review" || properties.name === "code-review") type = "session.review"
+          break
       }
       if (!type || !sessionID) return
       try {

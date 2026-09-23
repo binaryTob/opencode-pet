@@ -53,12 +53,14 @@ test("forwards session activity and permission states, but no conversation conte
   await event({ event: { type: "permission.replied", properties: { sessionID: "session-1" } } } as never)
   await event({ event: { type: "message.updated", properties: { sessionID: "session-1", text: "private" } } } as never)
   await event({ event: { type: "session.idle", properties: { sessionID: "session-1" } } } as never)
+  await event({ event: { type: "command.executed", properties: { sessionID: "session-1", name: "review" } } } as never)
   expect(sent).toEqual([
     { directory: "/work", url: "local-relay" },
     { type: "session.busy", sessionID: "session-1", directory: "/work" },
     { type: "session.waiting", sessionID: "session-1", directory: "/work" },
     { type: "session.busy", sessionID: "session-1", directory: "/work" },
     { type: "session.idle", sessionID: "session-1", directory: "/work" },
+    { type: "session.review", sessionID: "session-1", directory: "/work" },
   ])
   await plugin.dispose?.()
 })

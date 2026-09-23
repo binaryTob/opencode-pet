@@ -1,0 +1,20 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GTK bindings
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-gdkpixbuf-2.0 librsvg2-common
+      - name: Python tests
+        run: /usr/bin/python3 -m unittest -v test_pet.py
+      - uses: oven-sh/setup-bun@v2
+      - name: Plugin tests
+        run: bun test plugin.test.ts

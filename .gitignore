@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.opencode/
+pets/
+spritesheet.png
+spritesheet.webp
+pet.json

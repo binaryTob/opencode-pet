@@ -6,10 +6,10 @@ Mascota de escritorio para **OpenCode en Linux**. Flota sobre las ventanas, mues
 
 ## Instalación sencilla en Ubuntu/Debian
 
-Necesitas [OpenCode](https://opencode.ai/docs/) instalado. Descarga el archivo **`opencode-pet_0.2.0_all.deb`** desde [Releases](https://github.com/binaryTob/opencode-pet/releases/latest) y, desde la carpeta donde lo descargaste, ejecuta:
+Necesitas [OpenCode](https://opencode.ai/docs/) instalado. Descarga el archivo **`opencode-pet_0.2.1_all.deb`** desde [Releases](https://github.com/binaryTob/opencode-pet/releases/latest) y, desde la carpeta donde lo descargaste, ejecuta:
 
 ```bash
-sudo apt install ./opencode-pet_0.2.0_all.deb
+sudo apt install ./opencode-pet_0.2.1_all.deb
 opencode-pet
 ```
 

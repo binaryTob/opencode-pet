@@ -731,6 +731,9 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
     result_count = Gtk.Label(label="Conecta OpenCode para ver modelos")
     result_count.set_xalign(0)
     model_options.pack_start(result_count, False, False, 0)
+    # Gtk.Window.show_all() does not recurse into a MenuButton's detached popover.
+    # Its children must be visible before the menu is opened.
+    model_options.show_all()
     custom_model = Gtk.Entry()
     custom_model.set_placeholder_text("O escribe proveedor/modelo")
     box.pack_start(custom_model, False, False, 0)

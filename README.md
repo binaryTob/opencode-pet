@@ -6,10 +6,10 @@ A floating desktop companion for **OpenCode on Linux**. It shows when your agent
 
 ## Easy install on Ubuntu/Debian
 
-Install [OpenCode](https://opencode.ai/docs/) first. Download **`opencode-pet_0.2.0_all.deb`** from [Releases](https://github.com/binaryTob/opencode-pet/releases/latest), then run this in the directory containing the downloaded file:
+Install [OpenCode](https://opencode.ai/docs/) first. Download **`opencode-pet_0.2.1_all.deb`** from [Releases](https://github.com/binaryTob/opencode-pet/releases/latest), then run this in the directory containing the downloaded file:
 
 ```bash
-sudo apt install ./opencode-pet_0.2.0_all.deb
+sudo apt install ./opencode-pet_0.2.1_all.deb
 opencode-pet
 ```
 

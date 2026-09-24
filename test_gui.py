@@ -68,6 +68,8 @@ class ModelPickerTest(unittest.TestCase):
                     if "251 modelos" not in count.get_text():
                         return True  # Wait for the background catalog request.
                     search = next(widget for widget in widgets(popover) if isinstance(widget, Gtk.SearchEntry))
+                    assert popover.get_child().get_visible() and search.get_visible(), \
+                        "El selector existe pero su contenido no se muestra"
                     search.set_text("model-249")
                     results = next(widget for widget in widgets(popover) if isinstance(widget, Gtk.ListBox))
                     rows = results.get_children()

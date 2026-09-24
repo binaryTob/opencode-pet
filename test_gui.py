@@ -20,6 +20,7 @@ def widgets(widget):
 class Gateway:
     def __init__(self):
         self.sent = []
+        self.legacy_outdated = True
 
     def sessions(self, _directory):
         return []
@@ -28,6 +29,14 @@ class Gateway:
         return []
 
     def models(self, _directory):
+        if _directory == "/legacy":
+            if self.legacy_outdated:
+                return [{"id": f"openrouter/model-{number}", "label": f"OpenRouter · Model {number}"}
+                        for number in range(200)]
+            return [{"id": "opencode-go/kimi-k3", "label": "OpenCode Go · Kimi K3",
+                     "providerID": "opencode-go", "providerName": "OpenCode Go", "modelName": "Kimi K3"},
+                    {"id": "opencode/gpt-5.4", "label": "OpenCode Zen · GPT-5.4",
+                     "providerID": "opencode", "providerName": "OpenCode Zen", "modelName": "GPT-5.4"}]
         models = [{"id": f"own/model-{number}", "label": f"My provider · Model {number}",
                    "providerID": "own", "providerName": "My provider", "modelName": f"Model {number}"}
                   for number in range(250)]
@@ -45,6 +54,7 @@ class ModelPickerTest(unittest.TestCase):
         gateway = Gateway()
         state = PetState()
         state.register("/demo", "http://127.0.0.1:45818")
+        state.register("/legacy", "http://127.0.0.1:45819")
         pet = Gtk.Window(title="Picker test pet")
         pet.show_all()
         toggle = create_chat_panel(pet, state, gateway, Gtk, GLib)
@@ -96,7 +106,36 @@ class ModelPickerTest(unittest.TestCase):
                     prompt.emit("activate")
                     phase[0] = 2
                     return True
-                if gateway.sent == ["own/model-249", "local/llama"]:
+                if phase[0] == 2 and gateway.sent == ["own/model-249", "local/llama"]:
+                    project = next(widget for widget in widgets(panel) if isinstance(widget, Gtk.ComboBoxText))
+                    project.set_active_id("/legacy")
+                    phase[0] = 3
+                    return True
+                if phase[0] == 3:
+                    warning = next((widget for widget in widgets(panel)
+                                    if isinstance(widget, Gtk.Label) and "plugin antiguo" in widget.get_text()), None)
+                    if warning is None:
+                        return True
+                    popover = button.get_popover()
+                    notice = next(widget for widget in widgets(popover)
+                                  if isinstance(widget, Gtk.Label) and "Plugin antiguo" in widget.get_text())
+                    assert "Go y Zen" in notice.get_text()
+                    gateway.legacy_outdated = False
+                    state.register("/legacy", "http://127.0.0.1:45820")
+                    phase[0] = 4
+                    return True
+                if phase[0] == 4:
+                    popover = button.get_popover()
+                    filter_box = next(widget for widget in widgets(popover)
+                                      if isinstance(widget, Gtk.ComboBoxText))
+                    if not filter_box.set_active_id("opencode-go"):
+                        return True  # Wait for the heartbeat to reload the new plugin's catalog.
+                    results = next(widget for widget in widgets(popover) if isinstance(widget, Gtk.ListBox))
+                    rows = results.get_children()
+                    assert len(rows) == 1 and rows[0].model_id == "opencode-go/kimi-k3"
+                    warning = [widget for widget in widgets(panel)
+                               if isinstance(widget, Gtk.Label) and "plugin antiguo" in widget.get_text()]
+                    assert not warning
                     Gtk.main_quit()
                     return False
             except Exception as error:
@@ -107,7 +146,7 @@ class ModelPickerTest(unittest.TestCase):
 
         GLib.timeout_add(100, lambda: toggle(None) or False)
         GLib.timeout_add(1000, exercise)
-        GLib.timeout_add(6000, lambda: Gtk.main_quit() or False)
+        GLib.timeout_add(8000, lambda: Gtk.main_quit() or False)
         Gtk.main()
         for window in Gtk.Window.list_toplevels():
             window.destroy()

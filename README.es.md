@@ -6,10 +6,10 @@ Mascota de escritorio para **OpenCode en Linux**. Flota sobre las ventanas, mues
 
 ## Instalación sencilla en Ubuntu/Debian
 
-Necesitas [OpenCode](https://opencode.ai/docs/) instalado. Descarga el archivo **`opencode-pet_0.2.1_all.deb`** desde [Releases](https://github.com/binaryTob/opencode-pet/releases/latest) y, desde la carpeta donde lo descargaste, ejecuta:
+Necesitas [OpenCode](https://opencode.ai/docs/) instalado. Descarga el archivo **`opencode-pet_0.2.2_all.deb`** desde [Releases](https://github.com/binaryTob/opencode-pet/releases/latest) y, desde la carpeta donde lo descargaste, ejecuta:
 
 ```bash
-sudo apt install ./opencode-pet_0.2.1_all.deb
+sudo apt install ./opencode-pet_0.2.2_all.deb
 opencode-pet
 ```
 
@@ -28,7 +28,7 @@ Si desarrollas en este repositorio, `packaging/build-deb.sh` genera el `.deb` en
 
 ## Elegir tu modelo
 
-Configura tu proveedor en OpenCode con `/connect` ([guía de proveedores](https://opencode.ai/docs/providers/)). La mascota no recibe ni guarda claves de API. En **✎ Chats**, escoge un proyecto y abre el selector bajo **Modelo**: elige **Todos los proveedores** o filtra por uno conectado, y usa **Buscar modelo, proveedor o ID…** para encontrar cualquiera de sus modelos. La lista muestra primero hasta 60 resultados para no ralentizar la ventana, pero el buscador consulta **todo el catálogo disponible**, no solo los primeros 60. **Predeterminado de OpenCode** usa el modelo configurado allí; el botón **↻** refresca la lista después de conectar un proveedor. También puedes escribir un ID manual en **O escribe proveedor/modelo**. Elige una sesión o pulsa **+ Nueva** y escribe para empezar.
+Configura tu proveedor en OpenCode con `/connect` ([guía de proveedores](https://opencode.ai/docs/providers/)). La mascota no recibe ni guarda claves de API. En **✎ Chats**, escoge un proyecto y abre el selector bajo **Modelo**: elige **Todos los proveedores** o filtra por uno conectado, y usa **Buscar modelo, proveedor o ID…** para encontrar cualquiera de sus modelos. Ahí aparecen **OpenCode Go** (`opencode-go`) y **OpenCode Zen** (`opencode`) cuando están disponibles en esa instancia de OpenCode. La lista muestra primero hasta 60 resultados para no ralentizar la ventana, pero el buscador consulta **todo el catálogo**, no solo los primeros 60. **Predeterminado de OpenCode** usa el modelo configurado allí; el botón **↻** refresca la lista después de conectar un proveedor. Elige una sesión o pulsa **+ Nueva** y escribe para empezar. Si el selector avisa **«Plugin antiguo»**, reinicia esa instancia de OpenCode: la mascota detectará el nuevo catálogo automáticamente.
 
 ## Importar tu mascota de ChatGPT
 

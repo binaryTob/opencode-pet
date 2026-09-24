@@ -28,13 +28,15 @@ test("forwards session activity and permission states, but no conversation conte
     messages: async () => ({ data: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "hola" }] }] }),
     promptAsync: async (request: unknown) => { calls.push(request); return { data: undefined } },
   }, provider: {
-    list: async () => ({ data: { connected: ["own", "local"], all: [
+    list: async () => ({ data: { connected: ["own", "local", "opencode", "opencode-go"], all: [
       { id: "own", name: "My provider", key: "secret-not-for-the-pet", models: {
         custom: { id: "custom", name: "My model", status: "active" },
         retired: { id: "retired", name: "Retired", status: "deprecated" },
         ...manyModels,
       } },
       { id: "local", name: "Local", models: { llama: { id: "llama", name: "Llama", status: "active" } } },
+      { id: "opencode", name: "OpenCode Zen", models: { "gpt-5.4": { id: "gpt-5.4", name: "GPT-5.4" } } },
+      { id: "opencode-go", name: "OpenCode Go", models: { "kimi-k3": { id: "kimi-k3", name: "Kimi K3" } } },
       { id: "other", name: "Other", models: { hidden: { id: "hidden", name: "Hidden" } } },
     ] } }),
   } }
@@ -43,13 +45,15 @@ test("forwards session activity and permission states, but no conversation conte
   expect(relayUrl).toStartWith("http://127.0.0.1:")
   expect((await (await originalFetch(`${relayUrl}/session?directory=%2Fwork`)).json())[0].title).toBe("Test")
   const catalog = await (await originalFetch(`${relayUrl}/models?directory=%2Fwork`)).json()
-  expect(catalog).toHaveLength(252)
+  expect(catalog).toHaveLength(254)
   expect(catalog.find((item: { id: string }) => item.id === "own/custom")).toEqual({
     id: "own/custom", label: "My provider · My model", providerID: "own",
     providerName: "My provider", modelName: "My model",
   })
   expect(catalog.some((item: { id: string }) => item.id === "own/model-249")).toBe(true)
   expect(catalog.some((item: { id: string }) => item.id === "local/llama")).toBe(true)
+  expect(catalog.some((item: { id: string }) => item.id === "opencode/gpt-5.4")).toBe(true)
+  expect(catalog.some((item: { id: string }) => item.id === "opencode-go/kimi-k3")).toBe(true)
   expect(catalog.some((item: { id: string }) => item.id === "other/hidden" || item.id === "own/retired")).toBe(false)
   expect(JSON.stringify(catalog)).not.toContain("secret-not-for-the-pet")
   expect((await (await originalFetch(`${relayUrl}/session?directory=%2Fwork`, { method: "POST", body: "{}" })).json()).id).toBe("s-2")

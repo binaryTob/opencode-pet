@@ -734,10 +734,6 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
     # Gtk.Window.show_all() does not recurse into a MenuButton's detached popover.
     # Its children must be visible before the menu is opened.
     model_options.show_all()
-    custom_model = Gtk.Entry()
-    custom_model.set_placeholder_text("O escribe proveedor/modelo")
-    box.pack_start(custom_model, False, False, 0)
-
     top = Gtk.Box(spacing=6)
     box.pack_start(top, False, False, 0)
     top.pack_start(Gtk.Label(label="Conversaciones"), True, True, 0)
@@ -777,6 +773,7 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
 
     ui = {"directory": None, "session": None, "building": False, "loading_list": False,
           "loading_models": False, "models_loaded_for": None, "selected_models": {}, "available_models": [],
+          "outdated_catalog": False, "model_server": None,
           "loading_messages": False, "sending": False, "projects": (), "rows": (), "generation": 0}
 
     def background(operation, complete):
@@ -882,7 +879,9 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
             row.add(labels)
             model_results.add(row)
         model_results.show_all()
-        if matches:
+        if ui["outdated_catalog"]:
+            result_count.set_text("Plugin antiguo: reinicia OpenCode para ver Go y Zen.")
+        elif matches:
             result_count.set_text(f"{len(matches)} modelos · mostrando {min(len(matches), 60)}")
         else:
             result_count.set_text("No hay resultados. Prueba otro nombre o ID.")
@@ -893,10 +892,11 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
                 ui["models_loaded_for"] == directory):
             return
         ui["loading_models"] = True
+        server = state.server(directory)
 
         def complete(items, error):
             ui["loading_models"] = False
-            if directory != ui["directory"]:
+            if directory != ui["directory"] or server != state.server(directory):
                 return
             if error:
                 feedback.set_text(error)
@@ -905,6 +905,13 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
                 feedback.set_text("OpenCode devolvió un catálogo de modelos inválido.")
                 return
             ui["models_loaded_for"] = directory
+            ui["model_server"] = server
+            ui["outdated_catalog"] = any(isinstance(item, dict) and "providerID" not in item
+                                         for item in items)
+            if ui["outdated_catalog"]:
+                feedback.set_text("Esta instancia usa un plugin antiguo; reinicia OpenCode para ver Go y Zen.")
+            elif feedback.get_text().startswith("Esta instancia usa un plugin antiguo"):
+                feedback.set_text("")
             catalog = []
             for item in items:
                 if not isinstance(item, dict) or not isinstance(item.get("id"), str):
@@ -960,7 +967,9 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
     def change_project(combo):
         ui["directory"] = combo.get_active_id()
         ui["models_loaded_for"] = None
+        ui["model_server"] = None
         ui["available_models"] = []
+        ui["outdated_catalog"] = False
         ui["session"] = None
         ui["generation"] += 1
         ui["rows"] = ()
@@ -970,7 +979,6 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
         ui["building"] = False
         transcript.get_buffer().set_text("Elige una conversación o escribe para empezar.")
         model_search.set_text("")
-        custom_model.set_text("")
         show_selected_model()
         render_model_results()
         update_list()
@@ -980,7 +988,6 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
         if row is None or not ui["directory"]:
             return
         ui["selected_models"][ui["directory"]] = row.model_id
-        custom_model.set_text("")
         show_selected_model()
         model_popover.hide()
 
@@ -1005,7 +1012,7 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
 
     def send(_widget):
         directory, session_id, text = ui["directory"], ui["session"], entry.get_text()
-        selected_model = custom_model.get_text().strip() or ui["selected_models"].get(directory, "default")
+        selected_model = ui["selected_models"].get(directory, "default")
         generation = ui["generation"]
         if ui["sending"]:
             return
@@ -1050,6 +1057,8 @@ def create_chat_panel(pet_window, state, gateway, Gtk, GLib):
     def refresh():
         show_projects()
         if panel.get_visible():
+            if ui["directory"] and ui["model_server"] != state.server(ui["directory"]):
+                ui["models_loaded_for"] = None
             update_list()
             update_models()
             update_messages()

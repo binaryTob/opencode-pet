@@ -6,10 +6,10 @@ A floating desktop companion for **OpenCode on Linux**. It shows when your agent
 
 ## Easy install on Ubuntu/Debian
 
-Install [OpenCode](https://opencode.ai/docs/) first. Download **`opencode-pet_0.2.2_all.deb`** from [Releases](https://github.com/binaryTob/opencode-pet/releases/latest), then run this in the directory containing the downloaded file:
+Install [OpenCode](https://opencode.ai/docs/) first. Download **`opencode-pet_0.2.3_all.deb`** from [Releases](https://github.com/binaryTob/opencode-pet/releases/latest), then run this in the directory containing the downloaded file:
 
 ```bash
-sudo apt install ./opencode-pet_0.2.2_all.deb
+sudo apt install ./opencode-pet_0.2.3_all.deb
 opencode-pet
 ```
 
@@ -88,7 +88,7 @@ Row 1 (8 frames) plays when the window moves right and row 2 (8) when it moves l
 
 ## Usage and troubleshooting
 
-**✎ Chats** lists recent sessions in projects with OpenCode running. Messages and activity refresh every few seconds. Drag the pet with the left mouse button. On GNOME/Wayland it uses XWayland, when available, to request always-on-top; on pure Wayland the compositor decides.
+**✎ Chats** lists recent sessions in projects with OpenCode running. Messages and activity refresh every few seconds. Drag the pet with the left mouse button. On GNOME/Wayland it uses XWayland, when available, to request always-on-top and keep both the pet and chat panel **visible when switching virtual desktops**; on pure Wayland the compositor decides.
 
 - **No projects / connection error:** run `opencode-pet --install`, quit **all** running OpenCode instances, then start OpenCode again. Check the pet with `curl http://127.0.0.1:47829/health`.
 - **No models listed:** connect a provider inside OpenCode using `/connect`, then reopen the panel.

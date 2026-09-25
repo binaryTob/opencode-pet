@@ -6,10 +6,10 @@ Mascota de escritorio para **OpenCode en Linux**. Flota sobre las ventanas, mues
 
 ## Instalación sencilla en Ubuntu/Debian
 
-Necesitas [OpenCode](https://opencode.ai/docs/) instalado. Descarga el archivo **`opencode-pet_0.2.2_all.deb`** desde [Releases](https://github.com/binaryTob/opencode-pet/releases/latest) y, desde la carpeta donde lo descargaste, ejecuta:
+Necesitas [OpenCode](https://opencode.ai/docs/) instalado. Descarga el archivo **`opencode-pet_0.2.3_all.deb`** desde [Releases](https://github.com/binaryTob/opencode-pet/releases/latest) y, desde la carpeta donde lo descargaste, ejecuta:
 
 ```bash
-sudo apt install ./opencode-pet_0.2.2_all.deb
+sudo apt install ./opencode-pet_0.2.3_all.deb
 opencode-pet
 ```
 
@@ -88,7 +88,7 @@ La fila 1 (8 fotogramas) se usa al mover la ventana hacia la derecha y la 2 (8) 
 
 ## Uso y resolución de problemas
 
-El botón **✎ Chats** abre las sesiones recientes de los proyectos donde esté abierto OpenCode. El chat actualiza mensajes y estados cada pocos segundos. Arrastra la mascota con clic izquierdo. En GNOME/Wayland usa XWayland para solicitar «siempre encima» si está disponible; en Wayland puro depende del compositor.
+El botón **✎ Chats** abre las sesiones recientes de los proyectos donde esté abierto OpenCode. El chat actualiza mensajes y estados cada pocos segundos. Arrastra la mascota con clic izquierdo. En GNOME/Wayland usa XWayland para solicitar «siempre encima» y que tanto la mascota como el panel **te acompañen al cambiar de escritorio virtual**; en Wayland puro depende del compositor.
 
 - **No aparecen proyectos / error de conexión:** ejecuta `opencode-pet --install`, cierra **todas** las instancias de OpenCode y vuelve a abrir una. El plugin debe cargarse después de instalarse. Puedes comprobar la mascota con `curl http://127.0.0.1:47829/health`.
 - **No aparecen modelos:** conecta primero un proveedor en OpenCode con `/connect` y vuelve a abrir el panel.
